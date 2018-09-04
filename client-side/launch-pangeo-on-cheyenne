@@ -211,7 +211,7 @@ function create_tunnel () {
       fi
     done
   fi
-  cmd="ssh -N -L ${LOCALPORT}:${REM_HOST}:${PORT} ${REM_USER}@cheyenne.ucar.edu"
+  cmd="ssh -N -L localhost:${LOCALPORT}:${REM_HOST}:${PORT} ${REM_USER}@cheyenne.ucar.edu"
   echo $cmd
   nohup $cmd &
   tunnel=$!
