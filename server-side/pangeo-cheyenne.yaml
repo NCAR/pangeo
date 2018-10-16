@@ -16,4 +16,7 @@ dependencies:
 # see https://github.com/SciTools/cartopy/issues/1120 for details
   - matplotlib=2.2.3
   - Cartopy
-  - nbserverproxy
+# Bug in nbserverproxy 0.8.3 or tornado 5.1.1 causing blank dashboard
+# Older version of tornado seems to still work
+  - tornado=5.0.2
+  - nbserverproxy=0.8.3
