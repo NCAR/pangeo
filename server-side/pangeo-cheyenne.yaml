@@ -6,9 +6,14 @@ channels:
 dependencies:
   - python=3
   - dask
+# To ensure our example notebook is consistent with jobqueue API, we
+# specify a version to use
   - dask-jobqueue=0.4.0
+  - numpy
   - xarray
   - jupyterlab
-  - matplotlib
+# matplotlib 3.0.0 doesn't work with Cartopy, so specify 2.2.3
+# see https://github.com/SciTools/cartopy/issues/1120 for details
+  - matplotlib=2.2.3
   - Cartopy
   - nbserverproxy
