@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python=3
   - dask
-  - dask-jobqueue=0.3.0
+  - dask-jobqueue=0.4.0
   - xarray
   - jupyterlab
   - matplotlib
