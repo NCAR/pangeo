@@ -12,10 +12,10 @@ dependencies:
   - numpy
   - xarray
   - jupyterlab
-# matplotlib 3.0.0 doesn't work with Cartopy, so specify 2.2.3
+# matplotlib 3.0.0 doesn't work with Cartopy 0.16.0, so specify 2.2.3
 # see https://github.com/SciTools/cartopy/issues/1120 for details
   - matplotlib=2.2.3
-  - Cartopy
+  - Cartopy=0.16.0
 # Bug in nbserverproxy 0.8.3 or tornado 5.1.1 causing blank dashboard
 # Older version of tornado seems to still work
   - tornado=5.0.2
