@@ -6,9 +6,17 @@ channels:
 dependencies:
   - python=3
   - dask
-  - dask-jobqueue=0.3.0
+# To ensure our example notebook is consistent with jobqueue API, we
+# specify a version to use
+  - dask-jobqueue=0.4.0
+  - numpy
   - xarray
   - jupyterlab
-  - matplotlib
-  - Cartopy
-  - nbserverproxy
+# matplotlib 3.0.0 doesn't work with Cartopy 0.16.0, so specify 2.2.3
+# see https://github.com/SciTools/cartopy/issues/1120 for details
+  - matplotlib=2.2.3
+  - Cartopy=0.16.0
+# Bug in nbserverproxy 0.8.3 or tornado 5.1.1 causing blank dashboard
+# Older version of tornado seems to still work
+  - tornado=5.0.2
+  - nbserverproxy=0.8.3
