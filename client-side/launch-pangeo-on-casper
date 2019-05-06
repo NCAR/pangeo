@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# USAGE: Launch this script from a local machine, it will connect to cheyenne as needed
+# USAGE: Launch this script from a local machine, it will connect to casper as needed
 # Required arguments (one of the following):
 # - account key to charge
 # - job id to reconnect to
@@ -17,12 +17,12 @@
 #
 # ABOUT:
 # This script handles two distinct tasks:
-# 1. submit a job to cheyenne queue to start jupyter remotely
+# 1. submit a job to casper queue to start jupyter remotely
 #    - wait for the job to start running
 #    - output remote host on which the job is running
-# 2. ssh tunnel to the remote cheyenne node to forward jupyter to localhost:8888
+# 2. ssh tunnel to the remote casper node to forward jupyter to localhost:8888
 #
-# ^C will break the ssh tunnel, but will not kill the cheyenne job
+# ^C will break the ssh tunnel, but will not kill the casper job
 # => also want a way to skip step 1 and connect to a running job
 #
 
@@ -67,17 +67,17 @@ while getopts ":u:l:A:i:p:H:w:k:e:h" opt; do
     h)
       echo "Usage: $(basename $0) [-u USERNAME] [-A ACCOUNT] [-i JOBID] [-k JOBID_TO_KILL]"
       echo "                      [-H REMHOST] [-p LOCALPORT] [-w WALLTIME] [-e CONDA_ENV]"
-      echo "       USERNAME - ssh to cheyenne with 'ssh USERNAME@cheyenne.ucar.edu' (default: username on local machine, i.e. $USER)"
-      echo "       ACCOUNT - account key to charge for running jupyter lab (default: cheyenne env var \$PBS_ACCOUNT)"
-      echo "       JOBID - Existing job ID of jupyter lab running on cheyenne (to tunnel into)"
-      echo "       JOBID_TO_KILL - Existing job ID of jupyter lab running on cheyenne (to kill the job)"
+      echo "       USERNAME - ssh to casper with 'ssh USERNAME@casper.ucar.edu' (default: username on local machine, i.e. $USER)"
+      echo "       ACCOUNT - account key to charge for running jupyter lab (default: casper env var \$PBS_ACCOUNT)"
+      echo "       JOBID - Existing job ID of jupyter lab running on casper (to tunnel into)"
+      echo "       JOBID_TO_KILL - Existing job ID of jupyter lab running on casper (to kill the job)"
       echo "       REMHOST - Compute node currently running jupyter lab"
       echo "       LOCALPORT - port on localhost to forward to (default: first open port >=8888)"
       echo "       WALLTIME - walltime for job on share queue running jupyter lab (default: 4:00:00)"
       echo "       CONDA_ENV - name of conda environment that contains jupyter lab (default: pangeo-cheyenne)"
       echo " NOTES:"
       echo "        1. If you are launching a new jupyter lab instance, an account key is required."
-      echo "           If ACCOUNT is not specified, this script will look for \$PBS_ACCOUNT on cheyenne,"
+      echo "           If ACCOUNT is not specified, this script will look for \$PBS_ACCOUNT on casper,"
       echo "           but if that environment variable is not set then the script will abort."
       exit 0
     ;;
@@ -91,7 +91,7 @@ done
 
 #######################################
 ### THIS FUNCTION LAUNCHES JUPYTER
-### (RUN IT ON CHEYENNE)
+### (RUN IT ON CASPER)
 function launch_job () {
   # Several variables passed through call to launch_job
   REM_USER=$1
@@ -107,23 +107,23 @@ function launch_job () {
     exit 1
   fi
 
-  ### OPTIONS THAT USERS SHOULD SET FOR CHEYENNE
-  QUEUE=share
-  NODES=1
-  CORES=1
+  ### OPTIONS THAT USERS SHOULD SET FOR CASPER
+  NTASKS=1
+  TASKS_PER_NODE=1
   ROOT_PATH=/glade/work/${REM_USER}/
-  SET_PY_ENV="source activate ${CONDA_ENV}"
+  SET_PY_ENV="conda activate ${CONDA_ENV}"
 
   # 1) Clean up output file, then submit job
   rm -f ${ROOT_PATH}/.jupyter_lab.log
-  s=$(qsub << EOF
-  #!/bin/bash
-  #PBS -N pangeo
-  #PBS -q ${QUEUE}
-  #PBS -A ${ACCOUNT}
-  #PBS -l select=${NODES}:ncpus=${CORES}:mpiprocs=${CORES}
-  #PBS -l walltime=$WALLTIME
-  #PBS -j oe
+  s=$(sbatch << EOF
+#!/bin/bash -l
+#SBATCH --job-name=pangeo
+#SBATCH --partition=dav
+#SBATCH --account=${ACCOUNT}
+#SBATCH --ntasks=${NTASKS}
+#SBATCH --ntasks-per-node=${TASKS_PER_NODE}
+#SBATCH --time=${WALLTIME}
+#SBATCH --output=mpi_job.out.%j
 
   module purge
   unset LD_LIBRARY_PATH
@@ -136,7 +136,7 @@ EOF
   SJOB=${s//[!0-9]/}
 
   # 2) Kill job that hasn't started yet with ^C
-  trap 'echo ""; echo "Killing ${SJOB}"; qdel ${SJOB}; exit 1' SIGINT SIGHUP
+  trap 'echo ""; echo "Killing ${SJOB}"; scancel ${SJOB}; exit 1' SIGINT SIGHUP
 
   # 3) Wait for job to start
   date
@@ -144,12 +144,12 @@ EOF
   WAITTIME=0
   while [ ! -e ${ROOT_PATH}/.jupyter_lab.log ]; do
     if [ ${WAITTIME} -ge 60 ]; then
-      #-- get job state from qstat -xf
-      STATE=$(qstat -xf ${SJOB} | grep job_state | awk -F= '{print $2}')
+      #-- get job state from scontrol
+      STATE=$(scontrol show job ${SJOB} | tr ' ' '\n' | grep JobState | cut -d '=' -f 2)
       if [[ ${STATE} =~ F ]]; then
         echo ""
         echo "Run failed!"
-        qstat -xf ${SJOB}
+        scontrol show job ${SJOB}
         exit 1
       else
         echo ""
@@ -177,7 +177,7 @@ EOF
       echo "It's taking too long to launch jupyter lab, aborting!"
       echo "Here's what was in the jupyter lab log:"
       cat ${ROOT_PATH}/.jupyter_lab.log
-      qdel ${SJOB}
+      scancel ${SJOB}
       exit 1
     fi
     sleep 1
@@ -199,7 +199,7 @@ EOF
 #######################################
 ### THIS FUNCTION CREATES SSH TUNNEL
 ### ALLOWS USERS TO ACCESS JUPYTER
-### (RUNNING ON CHEYENNE) VIA
+### (RUNNING ON CASPER) VIA
 ### https://localhost:${LOCALPORT}
 function create_tunnel () {
   if [ -z $LOCALPORT ]; then
@@ -212,7 +212,7 @@ function create_tunnel () {
       fi
     done
   fi
-  cmd="ssh -N -L localhost:${LOCALPORT}:${REM_HOST}:${PORT} ${REM_USER}@cheyenne.ucar.edu"
+  cmd="ssh -N -L localhost:${LOCALPORT}:${REM_HOST}:${PORT} ${REM_USER}@casper.ucar.edu"
   echo $cmd
   nohup $cmd &
   tunnel=$!
@@ -261,16 +261,16 @@ function create_tunnel () {
 # KILL JOB IF REQUESTED
 if [ ! -z $JOBID_TO_KILL ]; then
   echo "Killing $JOBID_TO_KILL..."
-  ssh ${REM_USER}@cheyenne.ucar.edu "qdel $JOBID_TO_KILL"
+  ssh ${REM_USER}@casper.ucar.edu "scancel $JOBID_TO_KILL"
   rm -f .port .token
   exit 0
 fi
 
-# RUN launch_job ON CHEYENNE unless a job ID or remote host name are provided
+# RUN launch_job ON CASPER unless a job ID or remote host name are provided
 # (if one of above is provided, we just want to re-tunnel to existing jupyter)
 if [ -z $JOBID ] && [ -z $REM_HOST ]; then
   rm -f .port .token .last_run.log
-  (ssh -t ${REM_USER}@cheyenne.ucar.edu "$(declare -f launch_job); launch_job ${REM_USER} ${WALLTIME} ${CONDA_ENV} ${ACCOUNT}" ; echo $? > .ret_code) | tee .last_run.log
+  (ssh -t ${REM_USER}@casper.ucar.edu "$(declare -f launch_job); launch_job ${REM_USER} ${WALLTIME} ${CONDA_ENV} ${ACCOUNT}" ; echo $? > .ret_code) | tee .last_run.log
   RET_CODE=`cat .ret_code`
   rm .ret_code
   if [ $RET_CODE -ne 0 ]; then
@@ -286,12 +286,12 @@ if [ -z $JOBID ] && [ -z $REM_HOST ]; then
   echo $TOKEN > .token
 fi
 
-# RUN create_tunnel AFTER CHEYENNE JOB LAUNCHES
+# RUN create_tunnel AFTER CASPER JOB LAUNCHES
 if [ -z $REM_HOST ]; then
   if [ ! -z $JOBID ]; then
     echo "Getting remote host from Job ID..."
     rm -f .last_run.host
-    ssh ${REM_USER}@cheyenne.ucar.edu "qstat -xf $JOBID | grep exec_host | awk -F= '{print \$2}'" > .last_run.host
+    ssh ${REM_USER}@casper.ucar.edu "scontrol show job ${SJOB} | tr ' ' '\n' | grep BatchHost | cut -d '=' -f 2'" > .last_run.host
     cat .last_run.host
     REM_HOST=`cat .last_run.host | cut -d '/' -f 1 | tr '\r' ' ' | tr '\n' ' ' | tr -d ' '`
     if [ -z $REM_HOST ]; then
